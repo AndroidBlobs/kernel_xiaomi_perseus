@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014-2018 The Linux Foundation. All rights reserved.
+ * Copyright (C) 2018 XiaoMi, Inc.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -6189,12 +6190,12 @@ static int _sde_crtc_event_enable(struct sde_kms *kms,
 	unsigned long flags;
 	bool found = false;
 	int ret, i = 0;
-	bool add_event = false;
 
 	crtc = to_sde_crtc(crtc_drm);
 	spin_lock_irqsave(&crtc->spin_lock, flags);
 	list_for_each_entry(node, &crtc->user_event_list, list) {
 		if (node->event == event) {
+			list_del(&node->list);
 			found = true;
 			break;
 		}
@@ -6239,23 +6240,10 @@ static int _sde_crtc_event_enable(struct sde_kms *kms,
 		}
 
 		INIT_LIST_HEAD(&node->irq.list);
-
-		mutex_lock(&crtc->crtc_lock);
 		ret = node->func(crtc_drm, true, &node->irq);
-		if (!ret) {
-			spin_lock_irqsave(&crtc->spin_lock, flags);
-			list_add_tail(&node->list, &crtc->user_event_list);
-			add_event = true;
-			spin_unlock_irqrestore(&crtc->spin_lock, flags);
-		}
-		mutex_unlock(&crtc->crtc_lock);
-
 		sde_power_resource_enable(&priv->phandle, kms->core_client,
 				false);
 	}
-
-	if (add_event)
-		return 0;
 
 	if (!ret) {
 		spin_lock_irqsave(&crtc->spin_lock, flags);
@@ -6299,6 +6287,7 @@ static int _sde_crtc_event_disable(struct sde_kms *kms,
 	 */
 	if (!crtc_drm->enabled) {
 		kfree(node);
+		node = NULL;
 		return 0;
 	}
 	priv = kms->dev->dev_private;
@@ -6307,11 +6296,13 @@ static int _sde_crtc_event_disable(struct sde_kms *kms,
 		SDE_ERROR("failed to enable power resource %d\n", ret);
 		SDE_EVT32(ret, SDE_EVTLOG_ERROR);
 		kfree(node);
+		node = NULL;
 		return ret;
 	}
 
 	ret = node->func(crtc_drm, false, &node->irq);
 	kfree(node);
+	node = NULL;
 	sde_power_resource_enable(&priv->phandle, kms->core_client, false);
 	return ret;
 }
