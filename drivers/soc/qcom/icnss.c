@@ -1,4 +1,5 @@
 /* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -285,7 +286,6 @@ enum icnss_driver_state {
 	ICNSS_FW_DOWN,
 	ICNSS_DRIVER_UNLOADING,
 	ICNSS_REJUVENATE,
-	ICNSS_MODE_ON,
 };
 
 struct ce_irq_list {
@@ -1611,16 +1611,6 @@ static int wlfw_wlan_mode_send_sync_msg(enum wlfw_driver_mode_enum_v01 mode)
 	}
 	penv->stats.mode_resp++;
 
-	if (mode == QMI_WLFW_OFF_V01) {
-		icnss_pr_dbg("Clear mode on 0x%lx, mode: %d\n",
-			     penv->state, mode);
-		clear_bit(ICNSS_MODE_ON, &penv->state);
-	} else {
-		icnss_pr_dbg("Set mode on 0x%lx, mode: %d\n",
-			     penv->state, mode);
-		set_bit(ICNSS_MODE_ON, &penv->state);
-	}
-
 	return 0;
 
 out:
@@ -2211,6 +2201,7 @@ static int icnss_driver_event_server_arrive(void *data)
 
 err_setup_msa:
 	icnss_assign_msa_perm_all(penv, ICNSS_MSA_PERM_HLOS_ALL);
+	clear_bit(ICNSS_MSA0_ASSIGNED, &penv->state);
 err_power_on:
 	icnss_hw_power_off(penv);
 fail:
@@ -2355,7 +2346,6 @@ static int icnss_driver_event_fw_ready_ind(void *data)
 		return -ENODEV;
 
 	set_bit(ICNSS_FW_READY, &penv->state);
-	clear_bit(ICNSS_MODE_ON, &penv->state);
 
 	icnss_pr_info("WLAN FW is ready: 0x%lx\n", penv->state);
 
@@ -3310,12 +3300,6 @@ int icnss_wlan_enable(struct device *dev, struct icnss_wlan_enable_cfg *config,
 		return -EINVAL;
 	}
 
-	if (test_bit(ICNSS_MODE_ON, &penv->state)) {
-		icnss_pr_err("Already Mode on, ignoring wlan_enable state: 0x%lx\n",
-			     penv->state);
-		return -EINVAL;
-	}
-
 	icnss_pr_dbg("Mode: %d, config: %p, host_version: %s\n",
 		     mode, config, host_version);
 
@@ -3529,6 +3513,7 @@ int icnss_trigger_recovery(struct device *dev)
 		goto out;
 	}
 
+	WARN_ON(1);
 	icnss_pr_warn("Initiate PD restart at WLAN FW, state: 0x%lx\n",
 		      priv->state);
 
@@ -4033,9 +4018,6 @@ static int icnss_stats_show_state(struct seq_file *s, struct icnss_priv *priv)
 			continue;
 		case ICNSS_DRIVER_UNLOADING:
 			seq_puts(s, "DRIVER UNLOADING");
-			continue;
-		case ICNSS_MODE_ON:
-			seq_puts(s, "MODE ON DONE");
 		}
 
 		seq_printf(s, "UNKNOWN-%d", i);
