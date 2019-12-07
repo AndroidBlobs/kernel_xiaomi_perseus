@@ -2,6 +2,7 @@
  * QTI Secure Execution Environment Communicator (QSEECOM) driver
  *
  * Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -199,7 +200,6 @@ struct qseecom_registered_app_list {
 	char app_name[MAX_APP_NAME_SIZE];
 	u32  app_arch;
 	bool app_blocked;
-	u32  check_block;
 	u32  blocked_on_listener_id;
 };
 
@@ -389,6 +389,8 @@ static int get_qseecom_keymaster_status(char *str)
 	return 1;
 }
 __setup("androidboot.keymaster=", get_qseecom_keymaster_status);
+
+extern void read_qseelog_wakeup(void);
 
 static int qseecom_scm_call2(uint32_t svc_id, uint32_t tz_cmd_id,
 			const void *req_buf, void *resp_buf)
@@ -1050,6 +1052,8 @@ static int qseecom_scm_call2(uint32_t svc_id, uint32_t tz_cmd_id,
 		svc_id, tz_cmd_id, qseos_cmd_id, smc_id, desc.arginfo);
 	pr_debug("scm_resp->result = 0x%x, scm_resp->resp_type = 0x%x, scm_resp->data = 0x%x\n",
 		scm_resp->result, scm_resp->resp_type, scm_resp->data);
+
+	read_qseelog_wakeup();
 	return ret;
 }
 
@@ -2186,7 +2190,6 @@ static void __qseecom_reentrancy_check_if_this_app_blocked(
 	sigset_t new_sigset, old_sigset;
 
 	if (qseecom.qsee_reentrancy_support) {
-		ptr_app->check_block++;
 		while (ptr_app->app_blocked || qseecom.app_block_ref_cnt > 1) {
 			/* thread sleep until this app unblocked */
 			sigfillset(&new_sigset);
@@ -2201,7 +2204,6 @@ static void __qseecom_reentrancy_check_if_this_app_blocked(
 			mutex_lock(&app_access_lock);
 			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		}
-		ptr_app->check_block--;
 	}
 }
 
@@ -2470,7 +2472,6 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 					MAX_APP_NAME_SIZE);
 		entry->app_blocked = false;
 		entry->blocked_on_listener_id = 0;
-		entry->check_block = 0;
 
 		/* Deallocate the handle */
 		if (!IS_ERR_OR_NULL(ihandle))
@@ -2581,8 +2582,7 @@ static int qseecom_unload_app(struct qseecom_dev_handle *data,
 				if (!strcmp((void *)ptr_app->app_name,
 					(void *)data->client.app_name)) {
 					found_app = true;
-					if (ptr_app->app_blocked ||
-							ptr_app->check_block)
+					if (ptr_app->app_blocked)
 						app_crash = false;
 					if (app_crash || ptr_app->ref_cnt == 1)
 						unload = true;
@@ -4533,7 +4533,6 @@ recheck:
 		entry->app_arch = app_arch;
 		entry->app_blocked = false;
 		entry->blocked_on_listener_id = 0;
-		entry->check_block = 0;
 		spin_lock_irqsave(&qseecom.registered_app_list_lock, flags);
 		list_add_tail(&entry->list, &qseecom.registered_app_list_head);
 		spin_unlock_irqrestore(&qseecom.registered_app_list_lock,
@@ -5448,7 +5447,6 @@ static int qseecom_query_app_loaded(struct qseecom_dev_handle *data,
 				MAX_APP_NAME_SIZE);
 			entry->app_blocked = false;
 			entry->blocked_on_listener_id = 0;
-			entry->check_block = 0;
 			spin_lock_irqsave(&qseecom.registered_app_list_lock,
 				flags);
 			list_add_tail(&entry->list,
