@@ -19,9 +19,12 @@
 
 struct fscrypt_ctx;
 
-/* iv sector for security/pfe/pfk_fscrypt.c and f2fs */
+/* iv sector for security/pfe/pfk_fscrypt.c and f2fs. sizeof is required
+ * to accommodate 32 bit targets.
+ */
 #define PG_DUN(i, p)                                            \
-	(((((u64)(i)->i_ino) & 0xffffffff) << 32) | ((p)->index & 0xffffffff))
+	((((i)->i_ino & 0xffffffff) << (sizeof((i)->i_ino)/2)) | \
+				((p)->index & 0xffffffff))
 
 struct fscrypt_info;
 
