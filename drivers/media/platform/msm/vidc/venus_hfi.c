@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2747,7 +2748,7 @@ static void venus_hfi_pm_handler(struct work_struct *work)
 {
 	int rc = 0;
 	u32 wfi_status = 0, idle_status = 0, pc_ready = 0;
-	int pc_count = 0, idle_count = 0;
+	int count = 0;
 	const int max_tries = 10;
 	struct venus_hfi_device *device = list_first_entry(
 			&hal_ctxt.dev_head, struct venus_hfi_device, list);
@@ -2796,16 +2797,8 @@ static void venus_hfi_pm_handler(struct work_struct *work)
 				wfi_status);
 			goto skip_power_off;
 		}
-		while (device->res->sys_idle_indicator &&
-				idle_count < max_tries) {
-			if (idle_status & BIT(30))
-				break;
-			usleep_range(50, 100);
-			idle_status = __read_register(device,
-				VIDC_CPU_CS_SCIACMDARG0);
-			idle_count++;
-		}
-		if (idle_count == max_tries) {
+		if (device->res->sys_idle_indicator &&
+			!(idle_status & BIT(30))) {
 			dprintk(VIDC_WARN,
 				"Skipping PC as idle_status (%#x) bit not set\n",
 				idle_status);
@@ -2818,7 +2811,7 @@ static void venus_hfi_pm_handler(struct work_struct *work)
 			goto skip_power_off;
 		}
 
-		while (pc_count < max_tries) {
+		while (count < max_tries) {
 			wfi_status = __read_register(device,
 					VIDC_WRAPPER_CPU_STATUS);
 			pc_ready = __read_register(device,
@@ -2827,10 +2820,10 @@ static void venus_hfi_pm_handler(struct work_struct *work)
 				VIDC_CPU_CS_SCIACMDARG0_HFI_CTRL_PC_READY))
 				break;
 			usleep_range(150, 250);
-			pc_count++;
+			count++;
 		}
 
-		if (pc_count == max_tries) {
+		if (count == max_tries) {
 			dprintk(VIDC_ERR,
 					"Skip PC. Core is not in right state (%#x, %#x)\n",
 					wfi_status, pc_ready);
